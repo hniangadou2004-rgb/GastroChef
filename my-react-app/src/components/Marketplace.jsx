@@ -1,40 +1,76 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useGame } from "../context/GameContext";
 
 function Marketplace() {
   const { ingredientStock, loadingIngredients, buyIngredient } = useGame();
   const [message, setMessage] = useState("");
+  const [quantities, setQuantities] = useState({});
+
+  const sortedIngredients = useMemo(
+    () => [...ingredientStock].sort((a, b) => a.name.localeCompare(b.name, "fr")),
+    [ingredientStock]
+  );
 
   if (loadingIngredients) return <p>Chargement du marché...</p>;
 
+  const getQty = (id) => Math.max(1, Number(quantities[id] || 1));
+
+  const handleQtyChange = (ingredientId, value) => {
+    setQuantities((prev) => ({
+      ...prev,
+      [ingredientId]: value
+    }));
+  };
+
   const handleBuy = async (ingredientId, ingredientName) => {
+    const quantity = getQty(ingredientId);
+
     try {
-      await buyIngredient(ingredientId, 1);
-      setMessage(`✅ ${ingredientName} acheté`);
+      await buyIngredient(ingredientId, quantity);
+      setMessage(`✅ ${ingredientName} acheté x${quantity}`);
     } catch (err) {
       setMessage(`❌ ${err.message}`);
     }
   };
 
   return (
-    <div className="card bg-base-100 p-4 shadow">
-      <h2 className="card-title">🛒 Marketplace</h2>
+    <div className="card bg-base-100 shadow">
+      <div className="card-body">
+        <div className="flex items-center justify-between">
+          <h2 className="card-title">🛒 Shop</h2>
+          <span className="badge badge-primary">Achat rapide</span>
+        </div>
 
-      <ul className="mt-2 space-y-2">
-        {ingredientStock.map((ing) => (
-          <li key={ing._id} className="flex justify-between items-center gap-2">
-            <span>{ing.name} (Stock: {ing.quantity})</span>
-            <div className="flex items-center gap-2">
-              <span className="badge badge-primary">{ing.price} 💰</span>
-              <button className="btn btn-xs btn-accent" onClick={() => handleBuy(ing._id, ing.name)}>
-                Acheter +1
-              </button>
-            </div>
-          </li>
-        ))}
-      </ul>
+        <div className="h-72 overflow-y-scroll pr-1">
+          <ul className="space-y-2">
+            {sortedIngredients.map((ing) => (
+              <li key={ing._id} className="rounded-lg bg-base-200 p-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="font-medium">{ing.name}</p>
+                    <p className="text-xs opacity-70">Prix unitaire: {ing.price} 💰</p>
+                  </div>
 
-      {message && <p className="text-sm mt-3">{message}</p>}
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min="1"
+                      value={getQty(ing._id)}
+                      onChange={(e) => handleQtyChange(ing._id, e.target.value)}
+                      className="input input-bordered input-sm w-20"
+                    />
+                    <button className="btn btn-sm btn-accent" onClick={() => handleBuy(ing._id, ing.name)}>
+                      Acheter
+                    </button>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {message && <p className="text-sm mt-2">{message}</p>}
+      </div>
     </div>
   );
 }

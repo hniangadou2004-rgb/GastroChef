@@ -15,7 +15,56 @@ export function GameProvider({ children }) {
 
   const token = localStorage.getItem("token");
 
-  // ====================== Load ingredients ======================
+  const loadSave = async () => {
+    if (!token) return;
+
+    try {
+      const res = await fetch("http://localhost:5000/api/save", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (!res.ok) {
+        throw new Error("Impossible de charger la sauvegarde");
+      }
+
+      const data = await res.json();
+      setKnownRecipes(data.learnedRecipes || []);
+      setSatisfaction(data.satisfaction ?? 20);
+      setTreasury(data.treasury ?? 100);
+      setInventory(data.inventory || {});
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const loadEconomy = async () => {
+    if (!token) return;
+
+    try {
+      const res = await fetch("http://localhost:5000/api/economy/overview", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (!res.ok) {
+        throw new Error("Impossible de charger l'économie");
+      }
+
+      const data = await res.json();
+      setTreasury(data.treasury ?? 0);
+      setSatisfaction(data.satisfaction ?? 20);
+      setTransactions(data.transactions || []);
+      setMargins(data.margins || []);
+
+      const stockMap = {};
+      (data.stock || []).forEach((item) => {
+        stockMap[item._id] = item.quantity;
+      });
+      setInventory(stockMap);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
   useEffect(() => {
     const loadIngredients = async () => {
       try {
@@ -27,102 +76,57 @@ export function GameProvider({ children }) {
         setLoadingIngredients(false);
       }
     };
+
     loadIngredients();
   }, []);
 
-  // ====================== Load player save ======================
-  const loadSave = async () => {
-    if (!token) return;
-    try {
-      const res = await fetch("http://localhost:5000/api/save", {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (!res.ok) {
-        setKnownRecipes([]);
-        return;
-      }
-      const data = await res.json();
-      setKnownRecipes(data.learnedRecipes || []);
-      setSatisfaction(data.satisfaction ?? 20);
-      setTreasury(data.treasury ?? 100);
-      setInventory(data.inventory || {});
-    } catch (error) {
-      console.error("Erreur chargement save:", error);
-    }
-  };
-
-  // ====================== Load economy overview ======================
-  const loadEconomy = async () => {
-    if (!token) return;
-    try {
-      const res = await fetch("http://localhost:5000/api/economy/overview", {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (!res.ok) throw new Error("Impossible de charger l'économie");
-      const data = await res.json();
-
-      setTreasury(data.treasury ?? 0);
-      setSatisfaction(data.satisfaction ?? 20);
-      setTransactions(data.transactions || []);
-      setMargins(data.margins || []);
-
-      const stockMap = {};
-      (data.stock || []).forEach((item) => {
-        stockMap[item._id] = item.quantity;
-      });
-      setInventory(stockMap);
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  // ====================== Load save + economy on mount ======================
   useEffect(() => {
     if (!token) return;
     loadSave();
     loadEconomy();
   }, [token]);
 
-  // ====================== Actions ======================
   const discoverRecipe = (recipe) => {
     if (!recipe) return;
+
     setKnownRecipes((prev) => {
       const recipeId = recipe._id?.toString();
-      const alreadyKnown = prev.some(
-        (r) => r._id?.toString() === recipeId
-      );
+      const recipeName = recipe.name;
+
+      const alreadyKnown = prev.some((knownRecipe) => {
+        if (recipeId && knownRecipe?._id) {
+          return knownRecipe._id.toString() === recipeId;
+        }
+        return knownRecipe?.name === recipeName;
+      });
+
       return alreadyKnown ? prev : [...prev, recipe];
     });
   };
 
   const buyIngredient = async (ingredientId, quantity = 1) => {
-    if (!token) return;
+    const res = await fetch("http://localhost:5000/api/economy/buy", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ ingredientId, quantity })
+    });
 
-    try {
-      const res = await fetch("http://localhost:5000/api/economy/buy", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({ ingredientId, quantity })
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Erreur achat");
-
-      setTreasury(data.treasury);
-      setInventory((prev) => ({
-        ...prev,
-        [data.ingredientId]: Number(prev[data.ingredientId] || 0) + data.quantityAdded
-      }));
-
-      await loadEconomy();
-      return data;
-    } catch (err) {
-      console.error(err);
-      throw err;
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.message || "Erreur achat");
     }
+
+    setTreasury(data.treasury);
+    setInventory((prev) => ({
+      ...prev,
+      [data.ingredientId]: Number(prev[data.ingredientId] || 0) + data.quantityAdded
+    }));
+
+    await loadEconomy();
+    return data;
   };
 
   const updateEconomyFromSocket = ({ treasury: nextTreasury, satisfaction: nextSatisfaction }) => {
@@ -131,7 +135,6 @@ export function GameProvider({ children }) {
     loadEconomy();
   };
 
-  // ====================== Computed state ======================
   const ingredientStock = useMemo(
     () =>
       ingredients.map((ingredient) => ({
@@ -165,4 +168,6 @@ export function GameProvider({ children }) {
   );
 }
 
-export const useGame = () => useContext(GameContext);
+export function useGame() {
+  return useContext(GameContext);
+}

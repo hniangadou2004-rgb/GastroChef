@@ -14,29 +14,23 @@ function Dashboard() {
 
   return (
     <div className="min-h-screen bg-base-200">
-      {/* Navbar */}
-      <Navbar />
+      <div className="mx-auto w-full max-w-7xl p-3 md:p-5 space-y-5">
+        <Navbar />
 
-      {/* Contenu principal */}
-      <div className="p-4 space-y-6">
-        {/* Ligne supérieure : Stock + Marketplace */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
           <Stock />
           <Marketplace />
         </div>
 
-        {/* Ligne centrale : Laboratoire + ServicePanel */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
           <Laboratory onDiscover={handleDiscover} />
           <ServicePanel />
         </div>
 
-        {/* Ligne inférieure : Livre de recettes */}
-        <div>
+        <div className="grid grid-cols-1 gap-4">
           <RecipeBook key={refreshRecipes} />
+          <FinancialDashboard />
         </div>
-
-        <FinancialDashboard />
       </div>
     </div>
   );

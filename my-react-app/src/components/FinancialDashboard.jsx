@@ -39,11 +39,10 @@ function FinancialDashboard() {
 
   const treasuryEvolution = useMemo(() => {
     const ordered = [...transactions].reverse();
-    let running = 100;
-    return ordered.map((tx) => {
-      running += tx.amount;
-      return running;
-    });
+    return ordered.reduce((acc, tx) => {
+      const previous = acc.length ? acc[acc.length - 1] : 100;
+      return [...acc, previous + tx.amount];
+    }, []);
   }, [transactions]);
 
   const expenseBreakdown = useMemo(() => {

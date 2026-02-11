@@ -4,8 +4,8 @@ const Save = require("./models/Save");
 const Recipe = require("./models/Recipe");
 
 // ⚠️ Mets tes vraies infos ici
-const USER_ID = "000000000000000000000000";
-const RESTAURANT_NAME = "Mon Restaurant";
+const USER_ID = "698a8286e41b0e269f0b685f";
+const RESTAURANT_NAME = "GastroChef";
 
 const runCheat = async () => {
   try {

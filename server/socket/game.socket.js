@@ -1,7 +1,6 @@
 const jwt = require("jsonwebtoken");
 const Save = require("../models/Save");
 const Recipe = require("../models/Recipe");
-const Ingredient = require("../models/Ingredient");
 const Transaction = require("../models/Transaction");
 
 const ORDER_TIMEOUT_PENALTY = 8;
@@ -22,6 +21,8 @@ module.exports = (io) => {
 
   io.on("connection", async (socket) => {
     const userId = socket.user.id;
+    socket.currentOrder = null;
+    socket.orderTimeout = null;
 
     await Save.findOneAndUpdate(
       { user: userId },
@@ -40,14 +41,29 @@ module.exports = (io) => {
       });
     };
 
-    const sendOrder = async () => {
-      const currentSave = await Save.findOne({ user: userId }).select("learnedRecipes");
-      const learnedRecipeIds = currentSave?.learnedRecipes || [];
-      const candidateRecipes = learnedRecipeIds.length
-        ? await Recipe.find({ _id: { $in: learnedRecipeIds } }).select("name salePrice ingredients")
-        : await Recipe.find().limit(10).select("name salePrice ingredients");
+    const clearCurrentOrderTimeout = () => {
+      if (socket.orderTimeout) {
+        clearTimeout(socket.orderTimeout);
+        socket.orderTimeout = null;
+      }
+    };
 
-      if (!candidateRecipes.length) return;
+    const sendOrder = async () => {
+      clearCurrentOrderTimeout();
+
+      const currentSave = await Save.findOne({ user: userId }).select("learnedRecipes");
+      const learnedRecipeIds = (currentSave?.learnedRecipes || []).map((id) => id.toString());
+
+      const allRecipes = await Recipe.find().select("name salePrice ingredients");
+      if (!allRecipes.length) return;
+
+      const knownRecipes = allRecipes.filter((recipe) => learnedRecipeIds.includes(recipe._id.toString()));
+      const unknownRecipes = allRecipes.filter((recipe) => !learnedRecipeIds.includes(recipe._id.toString()));
+
+      const shouldServeKnownRecipe = knownRecipes.length > 0 && (unknownRecipes.length === 0 || Math.random() < 0.75);
+      const candidateRecipes = shouldServeKnownRecipe
+        ? knownRecipes
+        : (unknownRecipes.length > 0 ? unknownRecipes : allRecipes);
 
       const recipe = candidateRecipes[Math.floor(Math.random() * candidateRecipes.length)];
       const order = {
@@ -61,10 +77,11 @@ module.exports = (io) => {
       socket.currentOrder = order;
       socket.emit("newOrder", order);
 
-      setTimeout(async () => {
+      socket.orderTimeout = setTimeout(async () => {
         if (socket.currentOrder?.id !== order.id) return;
 
         socket.satisfaction -= 10;
+        socket.currentOrder = null;
 
         const updatedSave = await Save.findOneAndUpdate(
           { user: userId },
@@ -82,7 +99,8 @@ module.exports = (io) => {
 
         socket.emit("orderFailed", {
           satisfaction: socket.satisfaction,
-          treasury: updatedSave?.treasury
+          treasury: updatedSave?.treasury,
+          message: "Commande non servie à temps"
         });
 
         if (socket.satisfaction < 0) socket.emit("gameOver");
@@ -94,11 +112,20 @@ module.exports = (io) => {
 
     socket.on("serveOrder", async () => {
       try {
-        if (!socket.currentOrder) return;
+        if (!socket.currentOrder) {
+          socket.emit("orderFailed", { message: "Aucune commande à servir" });
+          return;
+        }
 
-        const recipe = await Recipe.findById(socket.currentOrder.recipeId)
-          .populate("ingredients.ingredient", "name price");
-        if (!recipe) return;
+        const orderInProgress = socket.currentOrder;
+        clearCurrentOrderTimeout();
+
+        const recipe = await Recipe.findById(orderInProgress.recipeId).populate("ingredients.ingredient", "name price");
+        if (!recipe) {
+          socket.currentOrder = null;
+          socket.emit("orderFailed", { message: "Recette introuvable" });
+          return;
+        }
 
         const saveDoc = await Save.findOne({ user: userId });
         const inventory = saveDoc.inventory || new Map();
@@ -115,6 +142,33 @@ module.exports = (io) => {
             treasury: saveDoc.treasury,
             message: "Stock insuffisant pour servir ce plat"
           });
+          socket.currentOrder = orderInProgress;
+          socket.orderTimeout = setTimeout(async () => {
+            if (socket.currentOrder?.id !== orderInProgress.id) return;
+
+            socket.satisfaction -= 10;
+            socket.currentOrder = null;
+
+            const updatedSave = await Save.findOneAndUpdate(
+              { user: userId },
+              { $inc: { treasury: -ORDER_TIMEOUT_PENALTY }, $set: { satisfaction: socket.satisfaction } },
+              { new: true }
+            );
+
+            await Transaction.create({
+              user: userId,
+              type: "ORDER_TIMEOUT",
+              category: "expense",
+              amount: -ORDER_TIMEOUT_PENALTY,
+              metadata: { recipeName: orderInProgress.recipe }
+            });
+
+            socket.emit("orderFailed", {
+              satisfaction: socket.satisfaction,
+              treasury: updatedSave?.treasury,
+              message: "Commande non servie à temps"
+            });
+          }, Math.max(0, orderInProgress.expiresAt - Date.now()));
           return;
         }
 
@@ -129,10 +183,12 @@ module.exports = (io) => {
         socket.satisfaction += 1;
         socket.currentOrder = null;
 
+        const salePrice = Number(recipe.salePrice || 10);
+
         const updatedSave = await Save.findOneAndUpdate(
           { user: userId },
           {
-            $inc: { ...decrement, treasury: recipe.salePrice },
+            $inc: { ...decrement, treasury: salePrice },
             $set: { satisfaction: socket.satisfaction }
           },
           { new: true }
@@ -142,11 +198,11 @@ module.exports = (io) => {
           user: userId,
           type: "ORDER_SERVED",
           category: "income",
-          amount: recipe.salePrice,
+          amount: salePrice,
           metadata: {
             recipeId: recipe._id,
             recipeName: recipe.name,
-            salePrice: recipe.salePrice,
+            salePrice,
             ingredientCost
           }
         });
@@ -154,7 +210,7 @@ module.exports = (io) => {
         socket.emit("orderSuccess", {
           satisfaction: socket.satisfaction,
           treasury: updatedSave?.treasury,
-          amount: recipe.salePrice
+          amount: salePrice
         });
 
         await emitSnapshot();
@@ -164,6 +220,9 @@ module.exports = (io) => {
       }
     });
 
-    socket.on("disconnect", () => clearInterval(interval));
+    socket.on("disconnect", () => {
+      clearCurrentOrderTimeout();
+      clearInterval(interval);
+    });
   });
 };

@@ -29,87 +29,85 @@ const Ingredient = mongoose.model("Ingredient", IngredientSchema);
 const Recipe = mongoose.model("Recipe", RecipeSchema);
 
 const ingredientsData = [
-  { name: "Tomate", price: 1 },
-  { name: "Fromage", price: 2 },
-  { name: "Pâte", price: 1 },
-  { name: "Pain", price: 1 },
-  { name: "Steak", price: 3 },
-  { name: "Jambon", price: 2 },
+  { name: "Tomate", price: 2 },
+  { name: "Fromage", price: 3 },
+  { name: "Pâte", price: 2 },
+  { name: "Pain", price: 2 },
+  { name: "Steak", price: 5 },
+  { name: "Jambon", price: 4 },
   { name: "Pâtes", price: 2 },
-  { name: "Viande", price: 3 },
-  { name: "Laitue", price: 1 },
-  { name: "Poulet", price: 3 },
-  { name: "Croutons", price: 1 },
-  { name: "Galette", price: 1 },
+  { name: "Viande", price: 5 },
+  { name: "Laitue", price: 2 },
+  { name: "Poulet", price: 5 },
+  { name: "Croutons", price: 2 },
+  { name: "Galette", price: 2 },
   { name: "Sauce", price: 1 },
   { name: "Oignon", price: 1 },
-  { name: "Fromage Bleu", price: 2 },
-  { name: "Mozzarella", price: 2 },
-  { name: "Parmesan", price: 2 },
-  { name: "Nouilles", price: 2 },
-  { name: "Bouillon", price: 2 },
-  { name: "Oeuf", price: 1 },
-  { name: "Porc", price: 3 },
+  { name: "Fromage Bleu", price: 4 },
+  { name: "Mozzarella", price: 4 },
+  { name: "Parmesan", price: 4 },
+  { name: "Nouilles", price: 3 },
+  { name: "Bouillon", price: 3 },
+  { name: "Oeuf", price: 2 },
+  { name: "Porc", price: 5 },
   { name: "Herbes", price: 1 },
-  { name: "Légume Mystère", price: 4 }
+  { name: "Légume Mystère", price: 6 }
 ];
 
 const recipesData = [
-  { name: "Pizza Margherita", ingredients: ["Tomate", "Fromage", "Pâte"] },
-  { name: "Burger Classique", ingredients: ["Pain", "Steak", "Fromage"] },
-  { name: "Croque Monsieur", ingredients: ["Pain", "Fromage", "Jambon"] },
-  { name: "Pasta Bolognese", ingredients: ["Pâtes", "Tomate", "Viande"] },
-  { name: "Salade César", ingredients: ["Laitue", "Poulet", "Croutons", "Fromage"] },
-  { name: "Tacos Boeuf", ingredients: ["Galette", "Viande", "Fromage", "Sauce"] },
-  { name: "Burger Gourmet", ingredients: ["Pain", "Steak", "Fromage", "Oignon", "Sauce"] },
+  { name: "Pizza Margherita", salePrice: 18, ingredients: ["Tomate", "Fromage", "Pâte"] },
+  { name: "Burger Classique", salePrice: 21, ingredients: ["Pain", "Steak", "Fromage"] },
+  { name: "Croque Monsieur", salePrice: 17, ingredients: ["Pain", "Fromage", "Jambon"] },
+  { name: "Pasta Bolognese", salePrice: 20, ingredients: ["Pâtes", "Tomate", "Viande"] },
+  { name: "Salade César", salePrice: 19, ingredients: ["Laitue", "Poulet", "Croutons", "Fromage"] },
+  { name: "Tacos Boeuf", salePrice: 20, ingredients: ["Galette", "Viande", "Fromage", "Sauce"] },
+  { name: "Burger Gourmet", salePrice: 25, ingredients: ["Pain", "Steak", "Fromage", "Oignon", "Sauce"] },
   {
     name: "Pizza 4 Fromages",
+    salePrice: 26,
     ingredients: ["Pâte", "Fromage", "Fromage Bleu", "Mozzarella", "Parmesan"]
   },
-  { name: "Ramen", ingredients: ["Nouilles", "Bouillon", "Oeuf", "Porc"] },
-  { name: "Soupe de l'Émeraude", ingredients: ["Bouillon", "Herbes", "Légume Mystère"] }
+  { name: "Ramen", salePrice: 24, ingredients: ["Nouilles", "Bouillon", "Oeuf", "Porc"] },
+  { name: "Soupe de l'Émeraude", salePrice: 28, ingredients: ["Bouillon", "Herbes", "Légume Mystère"] }
 ];
 
 const hasDuplicateIngredient = (ingredients) => new Set(ingredients).size !== ingredients.length;
 
 const seedDatabase = async () => {
   try {
-    // 🔹 Vider les collections
     await Ingredient.deleteMany();
     await Recipe.deleteMany();
 
-    // 🔹 Insérer les ingrédients
     const ingredients = await Ingredient.insertMany(ingredientsData);
     const ingredientMap = Object.fromEntries(ingredients.map((ing) => [ing.name, ing._id]));
 
-    // 🔹 Préparer et valider les recettes
     const recipesToInsert = recipesData.map((recipe) => {
       if (hasDuplicateIngredient(recipe.ingredients)) {
         throw new Error(`Recette invalide (doublon ingrédient): ${recipe.name}`);
       }
-      const missing = recipe.ingredients.filter((name) => !ingredientMap[name]);
-      if (missing.length > 0) {
+
+      const missingIngredients = recipe.ingredients.filter((name) => !ingredientMap[name]);
+      if (missingIngredients.length > 0) {
         throw new Error(
-          `Recette invalide (${recipe.name}), ingrédients manquants: ${missing.join(", ")}`
+          `Recette invalide (${recipe.name}), ingrédients manquants: ${missingIngredients.join(", ")}`
         );
       }
+
       return {
         name: recipe.name,
-        salePrice: recipe.salePrice ?? 10,
-        ingredients: recipe.ingredients.map((name) => ({
-          ingredient: ingredientMap[name],
+        salePrice: recipe.salePrice,
+        ingredients: recipe.ingredients.map((ingName) => ({
+          ingredient: ingredientMap[ingName],
           quantity: 1
         }))
       };
     });
 
-    // 🔹 Insérer les recettes
     await Recipe.insertMany(recipesToInsert);
-
     console.log("✅ Seed terminé avec succès !");
-    process.exit(0);
+    process.exit();
   } catch (err) {
-    console.error("❌ Erreur pendant le seed:", err);
+    console.error("❌ Erreur pendant le seed", err);
     process.exit(1);
   }
 };

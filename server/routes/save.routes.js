@@ -12,7 +12,6 @@ router.get("/", authMiddleware, async (req, res) => {
 
     if (!save) {
       return res.json({ learnedRecipes: [], treasury: 100, inventory: {}, satisfaction: 20 });
-      return res.json({ learnedRecipes: [] });
     }
 
     return res.json(save);
