@@ -1,18 +1,21 @@
 require("dotenv").config();
+
 const mongoose = require("mongoose");
 
-mongoose
-    .connect(process.env.MONGO_URI || "mongodb://localhost:27017/GastroChef")
-    .then(() => console.log("MongoDB connected."))
-    .catch((err) => {
-        console.error("MongoDB connection error.", err);
-        process.exit(1);
-    });
+mongoose.connect(process.env.MONGO_URI).then(() => {
+    console.log("MongoDB connected");
+}).catch((error) => {
+    console.error("Error MongoDB", error);
 
-const IngredientSchema = new mongoose.Schema({
-    name: { type: String, required: true, unique: true },
-    price: { type: Number, default: 1 }
+    process.exit(1);
 });
+
+const IngredientSchema = new mongoose.Schema(
+    {
+        name: { type: String, required: true, unique: true },
+        price: { type: Number, default: 1 }
+    }
+);
 
 const RecipeSchema = new mongoose.Schema({
     name: { type: String, required: true, unique: true },
@@ -83,13 +86,13 @@ const seedDatabase = async () => {
 
         const recipesToInsert = recipesData.map((recipe) => {
             if (hasDuplicateIngredient(recipe.ingredients)) {
-                throw new Error(`Invalid recipe (duplicate ingredient): ${recipe.name}`);
+                throw new Error(`Recette invalide (doublon ingrédient): ${recipe.name}`);
             }
 
             const missingIngredients = recipe.ingredients.filter((name) => !ingredientMap[name]);
             if (missingIngredients.length > 0) {
                 throw new Error(
-                    `Invalid recipe (${recipe.name}), missing ingredients: ${missingIngredients.join(", ")}`
+                    `Recette invalide (${recipe.name}), ingrédients manquants: ${missingIngredients.join(", ")}`
                 );
             }
 
@@ -104,10 +107,10 @@ const seedDatabase = async () => {
         });
 
         await Recipe.insertMany(recipesToInsert);
-        console.log("Seed completed successfully.");
+        console.log("✅ Seed terminé avec succès !");
         process.exit();
     } catch (err) {
-        console.error("Seed failed.", err);
+        console.error("❌ Erreur pendant le seed", err);
         process.exit(1);
     }
 };
